@@ -1,8 +1,59 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 
-// BackgroundBlob — passive jiggling alien creature in the background.
-// Wanders slowly, no interaction. Used on the Portfolio page.
+// Simplex noise for organic wandering
+const PERM = new Uint8Array(512)
+const GRAD3: [number, number, number][] = [
+  [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0],
+  [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
+  [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1],
+]
+function initNoise() {
+  const p = new Uint8Array(256)
+  for (let i = 0; i < 256; i++) p[i] = i
+  for (let i = 255; i > 0; i--) {
+    const r = Math.floor(Math.random() * (i + 1))
+    ;[p[i], p[r]] = [p[r], p[i]]
+  }
+  for (let i = 0; i < 512; i++) PERM[i] = p[i & 255]
+}
+initNoise()
+
+function snoise3(x: number, y: number, z: number): number {
+  const X = Math.floor(x) & 255
+  const Y = Math.floor(y) & 255
+  const Z = Math.floor(z) & 255
+  const fx = x - Math.floor(x)
+  const fy = y - Math.floor(y)
+  const fz = z - Math.floor(z)
+  const u = fx * fx * (3 - 2 * fx)
+  const v = fy * fy * (3 - 2 * fy)
+  const w = fz * fz * (3 - 2 * fz)
+
+  function grad(hash: number, dx: number, dy: number, dz: number) {
+    const g = GRAD3[hash % 12]
+    return g[0] * dx + g[1] * dy + g[2] * dz
+  }
+
+  const n000 = grad(PERM[PERM[PERM[X] + Y] + Z], fx, fy, fz)
+  const n100 = grad(PERM[PERM[PERM[X + 1] + Y] + Z], fx - 1, fy, fz)
+  const n010 = grad(PERM[PERM[PERM[X] + Y + 1] + Z], fx, fy - 1, fz)
+  const n110 = grad(PERM[PERM[PERM[X + 1] + Y + 1] + Z], fx - 1, fy - 1, fz)
+  const n001 = grad(PERM[PERM[PERM[X] + Y] + Z + 1], fx, fy, fz - 1)
+  const n101 = grad(PERM[PERM[PERM[X + 1] + Y] + Z + 1], fx - 1, fy, fz - 1)
+  const n011 = grad(PERM[PERM[PERM[X] + Y + 1] + Z + 1], fx, fy - 1, fz - 1)
+  const n111 = grad(PERM[PERM[PERM[X + 1] + Y + 1] + Z + 1], fx - 1, fy - 1, fz - 1)
+
+  const nx00 = n000 + (n100 - n000) * u
+  const nx10 = n010 + (n110 - n010) * u
+  const nx01 = n001 + (n101 - n001) * u
+  const nx11 = n011 + (n111 - n011) * u
+
+  const nxy0 = nx00 + (nx10 - nx00) * v
+  const nxy1 = nx01 + (nx11 - nx01) * v
+
+  return nxy0 + (nxy1 - nxy0) * w
+}
 
 export default function BackgroundBlob() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -11,61 +62,18 @@ export default function BackgroundBlob() {
     const container = containerRef.current
     if (!container) return
 
-    // Tiny simplex noise for organic wandering
-    const PERM = new Uint8Array(512)
-    const GRAD3: number[][] = [
-      [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0],
-      [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
-      [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1],
-    ]
-    ;(function initNoise() {
-      const p = new Uint8Array(256)
-      for (let i = 0; i < 256; i++) p[i] = i
-      for (let i = 255; i > 0; i--) {
-        const r = Math.floor(Math.random() * (i + 1))
-        ;[p[i], p[r]] = [p[r], p[i]]
-      }
-      for (let i = 0; i < 512; i++) PERM[i] = p[i & 255]
-    })()
-
-    function snoise3(x: number, y: number, z: number): number {
-      const X = Math.floor(x) & 255
-      const Y = Math.floor(y) & 255
-      const Z = Math.floor(z) & 255
-      const fx = x - Math.floor(x)
-      const fy = y - Math.floor(y)
-      const fz = z - Math.floor(z)
-      const u = fx * fx * (3 - 2 * fx)
-      const v = fy * fy * (3 - 2 * fy)
-      const w = fz * fz * (3 - 2 * fz)
-      const grad = (hash: number, dx: number, dy: number, dz: number) => {
-        const g = GRAD3[hash % 12]
-        return g[0] * dx + g[1] * dy + g[2] * dz
-      }
-      const n000 = grad(PERM[PERM[PERM[X] + Y] + Z], fx, fy, fz)
-      const n100 = grad(PERM[PERM[PERM[X + 1] + Y] + Z], fx - 1, fy, fz)
-      const n010 = grad(PERM[PERM[PERM[X] + Y + 1] + Z], fx, fy - 1, fz)
-      const n110 = grad(PERM[PERM[PERM[X + 1] + Y + 1] + Z], fx - 1, fy - 1, fz)
-      const n001 = grad(PERM[PERM[PERM[X] + Y] + Z + 1], fx, fy, fz - 1)
-      const n101 = grad(PERM[PERM[PERM[X + 1] + Y] + Z + 1], fx - 1, fy, fz - 1)
-      const n011 = grad(PERM[PERM[PERM[X] + Y + 1] + Z + 1], fx, fy - 1, fz - 1)
-      const n111 = grad(PERM[PERM[PERM[X + 1] + Y + 1] + Z + 1], fx - 1, fy - 1, fz - 1)
-      const nx00 = n000 + (n100 - n000) * u
-      const nx10 = n010 + (n110 - n010) * u
-      const nx01 = n001 + (n101 - n001) * u
-      const nx11 = n011 + (n111 - n011) * u
-      const nxy0 = nx00 + (nx10 - nx00) * v
-      const nxy1 = nx01 + (nx11 - nx01) * v
-      return nxy0 + (nxy1 - nxy0) * w
-    }
-
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(window.innerWidth, window.innerHeight)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     container.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100)
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      100
+    )
     camera.position.set(0, 0, 12)
 
     const SPHERE_RADIUS = 3.0
@@ -73,12 +81,16 @@ export default function BackgroundBlob() {
 
     const mat = new THREE.ShaderMaterial({
       transparent: true,
-      uniforms: { uTime: { value: 0 } },
+      uniforms: {
+        uTime: { value: 0 },
+      },
       vertexShader: `
         uniform float uTime;
+
         varying vec3 vNormal;
         varying vec3 vPosition;
 
+        // ---- simplex noise ----
         vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
         vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
         vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
@@ -134,35 +146,52 @@ export default function BackgroundBlob() {
         void main() {
             vec3 pos = position;
             vec3 nrm = normalize(normal);
+
+            // Organic idle jiggle
             float w1 = fbm(pos * 0.55 + uTime * 0.25);
             float w2 = fbm(pos * 1.1  + vec3(50.0) + uTime * 0.4);
             float idleWobble = w1 * 0.14 + w2 * 0.06;
             pos += nrm * idleWobble;
+
+            // Breathing
             float breathe = sin(uTime * 0.30 * 6.2831) * 0.05;
             pos *= 1.0 + breathe;
+
             vPosition = pos;
             vNormal = normalize(nrm + vec3(w1*0.06, w2*0.06, 0.0));
+
             gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
         }
       `,
       fragmentShader: `
         varying vec3 vNormal;
         varying vec3 vPosition;
+
         void main() {
             vec3 keyDir  = normalize(vec3( 0.6,  0.8,  0.7));
             vec3 fillDir = normalize(vec3(-0.7, -0.3,  0.4));
             vec3 viewDir = normalize(-vPosition);
             vec3 halfKey = normalize(keyDir + viewDir);
+
+            // Deep blue-black alien mass
             vec3 baseColor = vec3(0.035, 0.040, 0.065);
+
             float diffKey  = max(dot(vNormal, keyDir),  0.0);
             float diffFill = max(dot(vNormal, fillDir), 0.0);
+
+            // Specular
             float spec = pow(max(dot(vNormal, halfKey), 0.0), 70.0);
             float spec2 = pow(max(dot(vNormal, halfKey), 0.0), 18.0) * 0.25;
+
+            // Rim
             float rim = pow(1.0 - max(dot(viewDir, vNormal), 0.0), 3.0);
             float fresnel = pow(1.0 - max(dot(viewDir, vNormal), 0.0), 2.5);
+
+            // Blue-cyan iridescence
             vec3 iridA = vec3(0.50, 0.65, 0.90);
             vec3 iridB = vec3(0.80, 0.60, 0.70);
             vec3 specTint = mix(vec3(0.80), mix(iridA, iridB, sin(fresnel * 6.28) * 0.5 + 0.5), 0.6);
+
             vec3 color = baseColor;
             color += vec3(0.20, 0.22, 0.35) * diffKey;
             color += vec3(0.14, 0.08, 0.12) * diffFill;
@@ -170,6 +199,7 @@ export default function BackgroundBlob() {
             color += vec3(0.25, 0.27, 0.40) * spec2;
             color += vec3(0.25, 0.30, 0.50) * rim * 0.35;
             color += vec3(0.12, 0.15, 0.28) * fresnel * 0.5;
+
             gl_FragColor = vec4(color, 0.40);
         }
       `,
@@ -178,12 +208,16 @@ export default function BackgroundBlob() {
     const blob = new THREE.Mesh(geo, mat)
     scene.add(blob)
 
+    // Soft ground disc
     const glowGeo = new THREE.PlaneGeometry(14, 14)
     const glowMat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
       uniforms: { uTime: { value: 0 } },
-      vertexShader: `varying vec2 vUv; void main(){vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      vertexShader: `
+        varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+      `,
       fragmentShader: `
         varying vec2 vUv;
         void main() {
@@ -197,13 +231,18 @@ export default function BackgroundBlob() {
     glowDisc.position.z = -4
     scene.add(glowDisc)
 
+    // ============================================
+    // ORGANIC WANDER — slow alien drift
+    // Uses simplex noise to drive position over time
+    // ============================================
     let time = 0
     let rafId = 0
     const clock = new THREE.Clock()
 
-    const WANDER_SPEED = 0.12
-    const WANDER_RANGE_X = 5.0
-    const WANDER_RANGE_Y = 2.5
+    // Wander parameters
+    const WANDER_SPEED = 0.12   // slow drift
+    const WANDER_RANGE_X = 5.0  // horizontal travel range
+    const WANDER_RANGE_Y = 2.5  // vertical travel range
 
     function animate() {
       rafId = requestAnimationFrame(animate)
@@ -213,14 +252,20 @@ export default function BackgroundBlob() {
       mat.uniforms.uTime.value = time
       glowMat.uniforms.uTime.value = time
 
+      // Organic wandering using 2D simplex noise
+      // Each axis driven by different noise samples for organic feel
       const wanderX = snoise3(time * WANDER_SPEED, 0, 0) * WANDER_RANGE_X
       const wanderY = snoise3(0, time * WANDER_SPEED * 0.7, 100) * WANDER_RANGE_Y
 
+      // Smooth position update
       blob.position.x += (wanderX - blob.position.x) * 0.02
       blob.position.y += (wanderY - blob.position.y) * 0.02
+
+      // Ground glow follows at half speed
       glowDisc.position.x += (wanderX * 0.5 - glowDisc.position.x) * 0.015
       glowDisc.position.y += (wanderY * 0.3 - glowDisc.position.y) * 0.015
 
+      // Gentle rotation — varies with movement
       const rotSpeed = 0.001 + Math.abs(wanderX - blob.position.x) * 0.0005
       blob.rotation.y += rotSpeed
       blob.rotation.x = Math.sin(time * 0.08) * 0.06 + snoise3(time * 0.05, 50, 50) * 0.03
@@ -228,6 +273,7 @@ export default function BackgroundBlob() {
 
       renderer.render(scene, camera)
     }
+
     animate()
 
     const handleResize = () => {
@@ -235,6 +281,7 @@ export default function BackgroundBlob() {
       camera.aspect = window.innerWidth / window.innerHeight
       camera.updateProjectionMatrix()
     }
+
     window.addEventListener('resize', handleResize)
 
     return () => {
@@ -256,8 +303,10 @@ export default function BackgroundBlob() {
       ref={containerRef}
       style={{
         position: 'fixed',
-        top: 0, left: 0,
-        width: '100vw', height: '100vh',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
         zIndex: 0,
         pointerEvents: 'none',
         opacity: 0.35,
