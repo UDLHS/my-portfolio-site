@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 // TweaksPanel.tsx
 // Self-contained, no host messaging. Slides in from the right edge as a
@@ -222,7 +222,7 @@ export function TweaksToggle({
 // The original tweaks-panel.jsx persisted via host postMessage. In a normal
 // deployed site the host doesn't exist, so we use localStorage instead.
 
-export function useTweaks<T extends Record<string, unknown>>(
+export function useTweaks<T extends object>(
   defaults: T,
   storageKey = 'uh.tweaks.v1',
 ): [T, <K extends keyof T>(key: K, value: T[K]) => void, () => void] {
