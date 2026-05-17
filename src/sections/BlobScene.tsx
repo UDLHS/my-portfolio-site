@@ -104,9 +104,7 @@ export default function BlobScene({
         uSpec:        { value: hexToVec3(palette[3]) },
         uHoverPoint:  { value: new THREE.Vector3(0, 0, SPHERE_RADIUS) },
         uHoverAmt:    { value: 0.0 },
-        /* Tighter hover Gaussian so the bulge lives RIGHT under the
-           cursor instead of smearing across the surface. */
-        uHoverRadius: { value: 0.85 },
+        uHoverRadius: { value: 1.05 },
         uPokePos:     { value: pokePositions },
         uPokeData:    { value: pokeData },
       },
@@ -194,8 +192,7 @@ export default function BlobScene({
 
           float dh = distance(position, uHoverPoint);
           float hG = exp(-(dh * dh) / (uHoverRadius * uHoverRadius));
-          /* Strong, localized bulge — pinpoint at cursor. */
-          float hoverBulge = hG * uHoverAmt * 1.10;
+          float hoverBulge = hG * uHoverAmt * 0.55;
           pos += nrm * hoverBulge;
           vHoverProx = hG * uHoverAmt;
 
@@ -287,10 +284,8 @@ export default function BlobScene({
           float bottomShadow = smoothstep(-0.9, 0.2, -vNormal.y) * 0.22;
           col *= 1.0 - bottomShadow;
 
-          /* Bright, tightly-focused hover gloss right under the cursor. */
-          float hoverShape = pow(clamp(vHoverProx, 0.0, 1.0), 3.0);
-          col += uSpec * hoverShape * 0.22;
-          col += uRim  * hoverShape * 0.12;
+          float hoverShape = pow(clamp(vHoverProx, 0.0, 1.0), 2.6);
+          col += uSpec * hoverShape * 0.06;
 
           float dent = clamp(vDentDark, 0.0, 1.4);
           col = mix(col, uBase * 0.55, dent * 0.55);
@@ -363,9 +358,8 @@ export default function BlobScene({
       tmpV.copy(hits[0].point)
       blob.worldToLocal(tmpV)
       pokePositions[nextPokeSlot].copy(tmpV)
-      /* Tighter poke radius (was 0.95) — the dent + wave now ring out
-         from the EXACT click point with sharper visual centroid. */
-      pokeData[nextPokeSlot].set(mat.uniforms.uTime.value, 1.15, 0.70)
+      // (startTime, strength, radius)
+      pokeData[nextPokeSlot].set(mat.uniforms.uTime.value, 1.0, 0.95)
       nextPokeSlot = (nextPokeSlot + 1) % MAX_POKES
       lastClickAt = mat.uniforms.uTime.value
     }
@@ -393,6 +387,7 @@ export default function BlobScene({
       mat.uniforms.uRim.value.copy(hexToVec3(p.palette[2]))
       mat.uniforms.uSpec.value.copy(hexToVec3(p.palette[3]))
 
+      // ---- Raycast for hover ----
       if (pointerInside) {
         raycaster.setFromCamera(pointer, camera)
         const hits = raycaster.intersectObject(blob, false)
@@ -407,14 +402,13 @@ export default function BlobScene({
       } else {
         hoverActive = false
       }
-      // Smooth the hover target so quick movements glide. Snappier
-       // tracking (was 18 / 7) so the bulge follows the cursor with
-       // minimal lag — matches "exact location" expectation.
-      hoverLocal.lerp(hoverLocalTarget, 1 - Math.exp(-dt * 32))
-      hoverAmt += ((hoverActive ? 1 : 0) - hoverAmt) * (1 - Math.exp(-dt * 14))
+      // Smooth the hover target so quick movements glide
+      hoverLocal.lerp(hoverLocalTarget, 1 - Math.exp(-dt * 18))
+      hoverAmt += ((hoverActive ? 1 : 0) - hoverAmt) * (1 - Math.exp(-dt * 7))
       mat.uniforms.uHoverPoint.value.copy(hoverLocal)
       mat.uniforms.uHoverAmt.value = hoverAmt
 
+      // ---- Gentle far-field avoidance — dies off when cursor is on the blob ----
       const mx = pointer.x * 4
       const my = pointer.y * 3
       const dist = Math.hypot(mx, my)
@@ -427,11 +421,12 @@ export default function BlobScene({
       } else {
         avoidTarget.set(0, 0, 0)
       }
-      avoidOffset.lerp(avoidTarget, 1 - Math.exp(-dt * (hoverActive ? 6 : 1.2)))
+      avoidOffset.lerp(avoidTarget, 1 - Math.exp(-dt * 1.2))
       blob.position.x = avoidOffset.x
       blob.position.y = avoidOffset.y
       shadowMesh.position.x = avoidOffset.x * 0.6
 
+      // ---- Slow spin ----
       blob.rotation.y += p.spinSpeed * dt
       blob.rotation.x = Math.sin(time * 0.13) * 0.08
       blob.rotation.z = Math.cos(time * 0.10) * 0.05
