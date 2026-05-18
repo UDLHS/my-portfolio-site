@@ -138,13 +138,47 @@ export default function Portfolio() {
           Mounting it as a sibling here keeps it truly viewport-fixed
           even while the wrapper runs its enter / glitch / exit transforms. */}
       <BackgroundBlob />
+      {/* Mobile menu overlay sits OUTSIDE the page-in wrapper for the
+          same reason as BackgroundBlob: page-in carries a transform
+          (animation end-state translateY(0)), which would create a
+          containing block and trap position:fixed inside the scrollable
+          page instead of the viewport — making the menu items render
+          centered in the FULL page height (far below the fold). */}
       <div
-        className={`page-in relative min-h-screen w-full overflow-x-hidden${glitching ? ' is-glitching' : ''}${exiting ? ' is-exiting' : ''}`}
+        className="fixed inset-0 z-50 md:hidden transition-all duration-500"
+        style={{
+          background: 'rgba(245, 245, 248, 0.92)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          opacity: menuOpen ? 1 : 0,
+          pointerEvents: menuOpen ? 'auto' : 'none',
+        }}
       >
-        {glitching && <div className="glitch-fx" aria-hidden />}
-        {!glitching && <div className="entry-glitch" aria-hidden />}
-
-      {/* ========== NAVIGATION ========== */}
+        <div className="flex flex-col items-center justify-center h-full gap-8">
+          {[
+            { label: 'WORK', id: 'work' },
+            { label: 'ABOUT', id: 'about' },
+            { label: 'CONTACT', id: 'contact' },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => scrollTo(item.id)}
+              className="font-orbitron text-xl uppercase transition-colors duration-300"
+              style={{
+                color: activeSection === item.id ? '#2a8a6e' : '#1a1a24',
+                letterSpacing: '6px',
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* NAV bar — must live OUTSIDE the page-in wrapper for the same
+          reason as BackgroundBlob and the mobile menu: page-in's
+          transform end-state creates a containing block, so a fixed
+          nav inside would scroll with the page instead of staying
+          pinned to the viewport. */}
       <nav
         className="fixed top-0 left-0 w-full z-40 px-6 lg:px-16 py-4 lg:py-5 flex justify-between items-center"
         style={{
@@ -204,38 +238,18 @@ export default function Portfolio() {
                      transform: menuOpen ? 'rotate(-45deg) translate(4px, -4px)' : 'none' }} />
         </button>
       </nav>
-
-      {/* Mobile menu overlay */}
       <div
-        className="fixed inset-0 z-30 md:hidden transition-all duration-500"
-        style={{
-          background: 'rgba(245, 245, 248, 0.92)',
-          backdropFilter: 'blur(24px)',
-          WebkitBackdropFilter: 'blur(24px)',
-          opacity: menuOpen ? 1 : 0,
-          pointerEvents: menuOpen ? 'auto' : 'none',
-        }}
+        className={`page-in relative min-h-screen w-full overflow-x-hidden${glitching ? ' is-glitching' : ''}${exiting ? ' is-exiting' : ''}`}
       >
-        <div className="flex flex-col items-center justify-center h-full gap-8">
-          {[
-            { label: 'WORK', id: 'work' },
-            { label: 'ABOUT', id: 'about' },
-            { label: 'CONTACT', id: 'contact' },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => scrollTo(item.id)}
-              className="font-orbitron text-xl uppercase transition-colors duration-300"
-              style={{
-                color: activeSection === item.id ? '#2a8a6e' : '#1a1a24',
-                letterSpacing: '6px',
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
+        {glitching && <div className="glitch-fx" aria-hidden />}
+        {!glitching && <div className="entry-glitch" aria-hidden />}
+
+      {/* ========== NAVIGATION — moved outside the page-in wrapper ========== */}
+
+      {/* Mobile menu overlay — REMOVED from here, moved up to be a
+          sibling of <BackgroundBlob /> so position:fixed escapes the
+          page-in containing block and pins to the viewport instead of
+          the full scrollable page. */}
 
       {/* ========== HERO SECTION ========== */}
       <section
