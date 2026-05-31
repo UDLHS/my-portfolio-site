@@ -2,7 +2,7 @@
 
 > An alien intelligence portfolio — not a typical developer website.
 
-**Live:** [https://n2ir2cabpls7i.kimi.page](https://n2ir2cabpls7i.kimi.page)
+**Live:** [my-portfolio-site-jet-six.vercel.app](my-portfolio-site-jet-six.vercel.app)
 
 ---
 
