@@ -167,6 +167,7 @@ export default function Home() {
             open={tweaksOpen}
             onClick={() => setTweaksOpen((v) => !v)}
             accent={accent}
+            palette={palette}
             inline
           />
         </div>
@@ -288,6 +289,7 @@ export default function Home() {
         open={tweaksOpen}
         onClose={() => setTweaksOpen(false)}
         accent={accent}
+        palette={palette}
       >
         <TweakSection label="Specimen" />
         <TweakSelect

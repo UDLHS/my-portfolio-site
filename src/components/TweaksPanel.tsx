@@ -8,11 +8,62 @@ import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 // Open state is driven by parent via `open` + `onClose`. The TweaksToggle
 // component renders the "TWEAKS" button in the top-right of the page.
 
+// ── Color helpers — derive the panel's themed glass from the blob palette ───
+function hexToRgb(hex: string): [number, number, number] {
+  const c = hex.replace('#', '')
+  const s = c.length === 3 ? c.replace(/./g, (ch) => ch + ch) : c
+  const n = parseInt(s.slice(0, 6), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+function rgba(hex: string, a: number): string {
+  const [r, g, b] = hexToRgb(hex)
+  return `rgba(${r}, ${g}, ${b}, ${a})`
+}
+// Mix two hex colors by t (0..1) and return rgba.
+function mixRgba(hexA: string, hexB: string, t: number, a: number): string {
+  const [r1, g1, b1] = hexToRgb(hexA)
+  const [r2, g2, b2] = hexToRgb(hexB)
+  const r = Math.round(r1 + (r2 - r1) * t)
+  const g = Math.round(g1 + (g2 - g1) * t)
+  const b = Math.round(b1 + (b2 - b1) * t)
+  return `rgba(${r}, ${g}, ${b}, ${a})`
+}
+
+// Build the full set of CSS custom properties for a given blob palette.
+// palette = [base(dark), lit(mid), rim(accent), spec(light)].
+function paletteTheme(palette: string[]): CSSProperties {
+  const [base, lit, rim, spec] = palette
+  return {
+    // Deep tinted glass background — base color, pushed dark + mostly
+    // opaque so the panel stays legibly dark even where it overlays the
+    // LIGHT top of the hero gradient.
+    ['--twk-bg' as never]: mixRgba(base, '#04050a', 0.5, 0.95),
+    ['--twk-bg-solid' as never]: mixRgba(base, '#04050a', 0.5, 1),
+    // Slightly lifted surfaces (fields, footer) — base mixed toward lit.
+    ['--twk-surface' as never]: mixRgba(base, lit, 0.22, 0.6),
+    ['--twk-surface-2' as never]: mixRgba(base, lit, 0.34, 0.85),
+    // Light ink tinted toward the spec highlight so text reads warm/cool
+    // with the palette rather than pure white.
+    ['--twk-ink' as never]: mixRgba(spec, '#ffffff', 0.2, 0.97),
+    ['--twk-ink-soft' as never]: rgba(spec, 0.66),
+    ['--twk-ink-faint' as never]: rgba(spec, 0.42),
+    // Accent (rim) drives dots, slider fill, toggle-on, focus, scrollbar.
+    ['--twk-accent' as never]: rim,
+    ['--twk-accent-soft' as never]: rgba(rim, 0.55),
+    ['--twk-accent-faint' as never]: rgba(rim, 0.26),
+    ['--twk-hair' as never]: rgba(rim, 0.18),
+    ['--twk-glow' as never]: rgba(rim, 0.5),
+  }
+}
+
 interface TweaksPanelProps {
   title?: string
   open: boolean
   onClose: () => void
   accent?: string
+  /** Full blob palette [base, lit, rim, spec] — themes the whole panel.
+   *  Falls back to a default abyss-like palette when omitted. */
+  palette?: string[]
   children: ReactNode
 }
 
@@ -21,8 +72,10 @@ export function TweaksPanel({
   open,
   onClose,
   accent = '#a3b9ed',
+  palette = ['#161e44', '#4d6dc4', '#a3b9ed', '#ffffff'],
   children,
 }: TweaksPanelProps) {
+  const theme = paletteTheme(palette)
   return (
     <>
       <style>{TWEAKS_STYLE}</style>
@@ -33,7 +86,7 @@ export function TweaksPanel({
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(8, 10, 18, 0.18)',
+          background: 'rgba(4, 5, 10, 0.34)',
           opacity: open ? 1 : 0,
           pointerEvents: open ? 'auto' : 'none',
           transition: 'opacity .35s ease',
@@ -46,6 +99,7 @@ export function TweaksPanel({
         className="twk-panel"
         data-open={open ? '1' : '0'}
         aria-hidden={!open}
+        style={theme}
       >
         <div className="twk-hd">
           <div className="twk-hd-l">
@@ -168,6 +222,8 @@ interface ToggleButtonProps {
   open: boolean
   onClick: () => void
   accent?: string
+  /** Full blob palette [base, lit, rim, spec] — themes the open-state. */
+  palette?: string[]
   /** When true, render as a static (non-fixed) flex child so it can sit
    *  inside a parent layout like a topbar. When false (default), the
    *  button is position:fixed in the top-right corner. */
@@ -182,6 +238,7 @@ export function TweaksToggle({
   open,
   onClick,
   accent = '#a3b9ed',
+  palette = ['#161e44', '#4d6dc4', '#a3b9ed', '#ffffff'],
   inline = false,
   top = 24,
   right = 24,
@@ -189,6 +246,10 @@ export function TweaksToggle({
   const positioning: CSSProperties = inline
     ? { position: 'relative', marginLeft: 4 }
     : { position: 'fixed', top, right }
+  // Open-state background = deep palette tint so the button matches the
+  // panel it opens; closed-state stays the neutral glass chip.
+  const openBg = mixRgba(palette[0], '#05060a', 0.3, 0.92)
+  const openInk = rgba(palette[3], 0.95)
   return (
     <>
       <style>{TOGGLE_STYLE}</style>
@@ -203,6 +264,8 @@ export function TweaksToggle({
         style={{
           ...positioning,
           ['--twk-accent' as never]: accent,
+          ['--twk-open-bg' as never]: openBg,
+          ['--twk-open-ink' as never]: openInk,
         }}
       >
         <span
@@ -291,12 +354,14 @@ const TOGGLE_STYLE = `
     box-shadow: 0 8px 28px rgba(8, 10, 22, 0.16);
   }
   .twk-fab[data-open="1"] {
-    background: #0a0a12;
-    color: #f4f5fa;
-    border-color: #0a0a12;
+    background: var(--twk-open-bg, #0a0a12);
+    color: var(--twk-open-ink, #f4f5fa);
+    border-color: var(--twk-accent, #0a0a12);
+    box-shadow: 0 8px 28px rgba(8, 10, 22, 0.22);
   }
   .twk-fab[data-open="1"]:hover {
-    background: #1a1a24;
+    background: var(--twk-open-bg, #1a1a24);
+    filter: brightness(1.15);
   }
   .twk-fab-dot {
     width: 6px;
@@ -351,30 +416,46 @@ const TWEAKS_STYLE = `
     z-index: 2147483646;
     display: flex;
     flex-direction: column;
-    background: rgba(248, 249, 253, 0.92);
-    color: #0c0c14;
-    -webkit-backdrop-filter: blur(28px) saturate(160%);
-    backdrop-filter: blur(28px) saturate(160%);
-    border-left: 1px solid rgba(12, 12, 20, 0.10);
+    /* Dark, blob-tinted glass — driven by --twk-* vars set per palette. */
+    background: var(--twk-bg, rgba(16, 18, 38, 0.86));
+    color: var(--twk-ink, rgba(255, 255, 255, 0.96));
+    -webkit-backdrop-filter: blur(30px) saturate(150%);
+    backdrop-filter: blur(30px) saturate(150%);
+    border-left: 1px solid var(--twk-accent-faint, rgba(163, 185, 237, 0.22));
     box-shadow:
-      -24px 0 60px rgba(8, 10, 22, 0.18),
-      -1px 0 0 rgba(255, 255, 255, 0.6) inset;
+      -28px 0 70px rgba(2, 3, 8, 0.5),
+      -1px 0 0 var(--twk-accent-faint, rgba(163, 185, 237, 0.22)) inset;
     font: 11.5px/1.4 'JetBrains Mono', ui-monospace, monospace;
     transform: translateX(100%);
     opacity: 0;
-    transition: transform .42s cubic-bezier(.2, .7, .2, 1), opacity .42s ease;
+    transition: transform .42s cubic-bezier(.2, .7, .2, 1), opacity .42s ease,
+      background .5s ease, border-color .5s ease, box-shadow .5s ease, color .5s ease;
     will-change: transform, opacity;
   }
   .twk-panel[data-open="1"] {
     transform: translateX(0);
     opacity: 1;
   }
+  /* Accent hairline running down the inner edge — reads as a "rail". */
+  .twk-panel::before {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0; left: 0;
+    width: 2px;
+    background: linear-gradient(180deg,
+      transparent 0%,
+      var(--twk-accent, #a3b9ed) 18%,
+      var(--twk-accent, #a3b9ed) 82%,
+      transparent 100%);
+    opacity: 0.55;
+    pointer-events: none;
+  }
   .twk-hd {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 22px 16px 18px 22px;
-    border-bottom: 1px solid rgba(12, 12, 20, 0.08);
+    border-bottom: 1px solid var(--twk-hair, rgba(163, 185, 237, 0.16));
   }
   .twk-hd-l {
     display: inline-flex;
@@ -386,7 +467,7 @@ const TWEAKS_STYLE = `
     font-weight: 600;
     letter-spacing: 5px;
     text-transform: uppercase;
-    color: #0c0c14;
+    color: var(--twk-ink, #fff);
   }
   .twk-dot {
     width: 6px; height: 6px;
@@ -397,7 +478,7 @@ const TWEAKS_STYLE = `
     appearance: none;
     border: 0;
     background: transparent;
-    color: rgba(12, 12, 20, 0.55);
+    color: var(--twk-ink-soft, rgba(255, 255, 255, 0.6));
     width: 28px;
     height: 28px;
     border-radius: 8px;
@@ -407,8 +488,8 @@ const TWEAKS_STYLE = `
     transition: background .2s ease, color .2s ease;
   }
   .twk-x:hover {
-    background: rgba(12, 12, 20, 0.06);
-    color: #0c0c14;
+    background: var(--twk-accent-faint, rgba(163, 185, 237, 0.2));
+    color: var(--twk-ink, #fff);
   }
   .twk-body {
     flex: 1;
@@ -420,18 +501,18 @@ const TWEAKS_STYLE = `
     overflow-x: hidden;
     min-height: 0;
     scrollbar-width: thin;
-    scrollbar-color: rgba(12, 12, 20, 0.15) transparent;
+    scrollbar-color: var(--twk-accent-soft, rgba(163, 185, 237, 0.5)) transparent;
   }
   .twk-body::-webkit-scrollbar { width: 8px; }
   .twk-body::-webkit-scrollbar-track { background: transparent; margin: 4px; }
   .twk-body::-webkit-scrollbar-thumb {
-    background: rgba(12, 12, 20, 0.15);
+    background: var(--twk-accent-soft, rgba(163, 185, 237, 0.5));
     border-radius: 4px;
     border: 2px solid transparent;
     background-clip: content-box;
   }
   .twk-body::-webkit-scrollbar-thumb:hover {
-    background: rgba(12, 12, 20, 0.28);
+    background: var(--twk-accent, #a3b9ed);
     border: 2px solid transparent;
     background-clip: content-box;
   }
@@ -440,17 +521,17 @@ const TWEAKS_STYLE = `
     align-items: center;
     justify-content: space-between;
     padding: 12px 22px 16px;
-    border-top: 1px solid rgba(12, 12, 20, 0.08);
+    border-top: 1px solid var(--twk-hair, rgba(163, 185, 237, 0.16));
     font-size: 9px;
     letter-spacing: 4px;
     text-transform: uppercase;
-    color: rgba(12, 12, 20, 0.5);
+    color: var(--twk-ink-faint, rgba(255, 255, 255, 0.4));
   }
   .twk-foot-dot {
     width: 5px; height: 5px;
     border-radius: 50%;
-    background: #4caf6e;
-    box-shadow: 0 0 8px #4caf6e;
+    background: var(--twk-accent, #a3b9ed);
+    box-shadow: 0 0 8px var(--twk-accent, #a3b9ed);
     animation: twkPulse 2.2s ease-in-out infinite;
   }
   @keyframes twkPulse {
@@ -472,14 +553,14 @@ const TWEAKS_STYLE = `
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    color: rgba(12, 12, 20, 0.72);
+    color: var(--twk-ink-soft, rgba(255, 255, 255, 0.72));
     font-size: 10px;
     letter-spacing: 2.5px;
     text-transform: uppercase;
   }
   .twk-lbl > span:first-child { font-weight: 500; }
   .twk-val {
-    color: rgba(12, 12, 20, 0.5);
+    color: var(--twk-accent, #a3b9ed);
     font-variant-numeric: tabular-nums;
     letter-spacing: 1.5px;
   }
@@ -488,9 +569,9 @@ const TWEAKS_STYLE = `
     font-weight: 600;
     letter-spacing: 5px;
     text-transform: uppercase;
-    color: rgba(12, 12, 20, 0.42);
+    color: var(--twk-accent-soft, rgba(163, 185, 237, 0.5));
     padding: 8px 0 2px;
-    border-top: 1px dashed rgba(12, 12, 20, 0.10);
+    border-top: 1px dashed var(--twk-hair, rgba(163, 185, 237, 0.16));
   }
   .twk-sect:first-child {
     padding-top: 0;
@@ -502,64 +583,72 @@ const TWEAKS_STYLE = `
     width: 100%;
     height: 30px;
     padding: 0 28px 0 10px;
-    border: 1px solid rgba(12, 12, 20, 0.12);
+    border: 1px solid var(--twk-accent-faint, rgba(163, 185, 237, 0.22));
     border-radius: 0;
-    background: rgba(255, 255, 255, 0.7);
-    color: inherit;
+    background: var(--twk-surface, rgba(40, 48, 90, 0.55));
+    color: var(--twk-ink, #fff);
     font: inherit;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     outline: none;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(12,12,20,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%23ffffff' fill-opacity='0.6' d='M0 0h10L5 6z'/></svg>");
     background-repeat: no-repeat;
     background-position: right 10px center;
+    transition: border-color .2s ease, background-color .2s ease;
   }
   .twk-field:focus {
-    border-color: rgba(12, 12, 20, 0.4);
-    background-color: rgba(255, 255, 255, 0.95);
+    border-color: var(--twk-accent, #a3b9ed);
+    background-color: var(--twk-surface-2, rgba(40, 48, 90, 0.8));
+  }
+  .twk-field option {
+    background: var(--twk-bg-solid, #10122a);
+    color: var(--twk-ink, #fff);
   }
   .twk-slider {
     appearance: none;
     -webkit-appearance: none;
     width: 100%;
-    height: 1px;
+    height: 2px;
     margin: 8px 0 4px;
-    background: rgba(12, 12, 20, 0.18);
+    background: var(--twk-accent-faint, rgba(163, 185, 237, 0.22));
     outline: none;
-    border-radius: 0;
+    border-radius: 999px;
   }
   .twk-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     width: 14px; height: 14px;
-    background: #0c0c14;
-    border: 1px solid #0c0c14;
-    border-radius: 0;
+    background: var(--twk-accent, #a3b9ed);
+    border: 1px solid var(--twk-accent, #a3b9ed);
+    border-radius: 50%;
     cursor: pointer;
+    box-shadow: 0 0 10px var(--twk-glow, rgba(163, 185, 237, 0.45));
     transition: transform .15s ease;
   }
-  .twk-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
+  .twk-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
   .twk-slider::-moz-range-thumb {
     width: 14px; height: 14px;
-    background: #0c0c14;
-    border: 1px solid #0c0c14;
-    border-radius: 0;
+    background: var(--twk-accent, #a3b9ed);
+    border: 1px solid var(--twk-accent, #a3b9ed);
+    border-radius: 50%;
     cursor: pointer;
+    box-shadow: 0 0 10px var(--twk-glow, rgba(163, 185, 237, 0.45));
   }
   .twk-toggle {
     position: relative;
     width: 34px;
     height: 18px;
-    border: 1px solid rgba(12, 12, 20, 0.22);
+    border: 1px solid var(--twk-accent-faint, rgba(163, 185, 237, 0.3));
     border-radius: 999px;
-    background: rgba(12, 12, 20, 0.05);
+    background: var(--twk-surface, rgba(40, 48, 90, 0.5));
     cursor: pointer;
     padding: 0;
-    transition: background .2s ease, border-color .2s ease;
+    transition: background .2s ease, border-color .2s ease, box-shadow .2s ease;
   }
   .twk-toggle[data-on="1"] {
-    background: #0c0c14;
-    border-color: #0c0c14;
+    background: var(--twk-accent, #a3b9ed);
+    border-color: var(--twk-accent, #a3b9ed);
+    box-shadow: 0 0 12px var(--twk-glow, rgba(163, 185, 237, 0.45));
   }
   .twk-toggle i {
     position: absolute;
@@ -568,9 +657,12 @@ const TWEAKS_STYLE = `
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-    transition: transform .2s ease;
+    background: var(--twk-bg-solid, #10122a);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    transition: transform .2s ease, background .2s ease;
   }
-  .twk-toggle[data-on="1"] i { transform: translateX(14px); }
+  .twk-toggle[data-on="1"] i {
+    transform: translateX(16px);
+    background: #fff;
+  }
 `
